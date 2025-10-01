@@ -89,250 +89,6 @@ echo "Training masks: $(ls data/raw/train/*_mask.png | wc -l)"
 
 ---
 
-## Phase 2: Data Exploration & Understanding (Week 1, Days 3-5)
-
-### Step 4: Create EDA Notebook
-
-**File:** `notebooks/01_data_exploration.ipynb`
-
-**Key tasks:**
-
-#### 4.1: Load and Inspect Samples
-
-```python
-import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image
-import glob
-
-# Load sample
-image_path = 'data/raw/train/1_sat.jpg'
-mask_path = 'data/raw/train/1_mask.png'
-
-image = np.array(Image.open(image_path))
-mask = np.array(Image.open(mask_path))
-
-print(f"Image shape: {image.shape}")  # (2448, 2448, 3)
-print(f"Mask shape: {mask.shape}")    # (2448, 2448, 3)
-print(f"Image dtype: {image.dtype}")
-print(f"Value range: [{image.min()}, {image.max()}]")
-
-# Visualize
-fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-axes[0].imshow(image)
-axes[0].set_title('Satellite Image')
-axes[0].axis('off')
-axes[1].imshow(mask)
-axes[1].set_title('RGB Mask')
-axes[1].axis('off')
-plt.tight_layout()
-plt.show()
-```
-
-#### 4.2: Define Color-to-Class Mapping
-
-```python
-# Official DeepGlobe color palette
-COLOR_MAP = {
-    (0, 255, 255): 0,    # urban (cyan)
-    (255, 255, 0): 1,    # agriculture (yellow)
-    (255, 0, 255): 2,    # rangeland (magenta)
-    (0, 255, 0): 3,      # forest (green)
-    (0, 0, 255): 4,      # water (blue)
-    (255, 255, 255): 5,  # barren (white)
-    (0, 0, 0): 6         # unknown (black)
-}
-
-CLASS_NAMES = [
-    'urban', 'agriculture', 'rangeland',
-    'forest', 'water', 'barren', 'unknown'
-]
-
-# Verify colors in mask
-unique_colors = np.unique(mask.reshape(-1, 3), axis=0)
-print(f"Unique colors in mask: {len(unique_colors)}")
-for color in unique_colors:
-    color_tuple = tuple(color)
-    class_id = COLOR_MAP.get(color_tuple, -1)
-    class_name = CLASS_NAMES[class_id] if class_id != -1 else "UNMAPPED"
-    print(f"RGB {color_tuple} → Class {class_id} ({class_name})")
-```
-
-#### 4.3: Analyze Class Distribution
-
-```python
-def analyze_class_distribution(mask_dir):
-    """Count pixels per class across all training masks"""
-    mask_paths = sorted(glob.glob(f"{mask_dir}/*_mask.png"))
-
-    class_counts = np.zeros(7, dtype=np.int64)
-
-    for mask_path in tqdm(mask_paths, desc="Analyzing masks"):
-        mask_rgb = np.array(Image.open(mask_path))
-
-        for color, class_id in COLOR_MAP.items():
-            match = np.all(mask_rgb == color, axis=-1)
-            class_counts[class_id] += np.sum(match)
-
-    return class_counts
-
-# Run analysis
-class_counts = analyze_class_distribution('data/raw/train')
-total_pixels = class_counts.sum()
-
-# Calculate statistics
-class_freqs = class_counts / total_pixels
-class_percentages = class_freqs * 100
-
-# Display results
-print("\n=== Class Distribution ===")
-for i, name in enumerate(CLASS_NAMES):
-    count = class_counts[i]
-    freq = class_freqs[i]
-    pct = class_percentages[i]
-    print(f"{name:12s}: {count:12,d} pixels ({pct:6.2f}%)")
-
-# Visualize
-fig, ax = plt.subplots(figsize=(10, 6))
-bars = ax.bar(CLASS_NAMES, class_percentages)
-ax.set_ylabel('Percentage (%)')
-ax.set_title('Class Distribution in Training Set')
-ax.grid(axis='y', alpha=0.3)
-plt.xticks(rotation=45)
-plt.tight_layout()
-plt.savefig('outputs/figures/class_distribution.png', dpi=150)
-plt.show()
-```
-
-#### 4.4: Calculate Class Weights
-
-```python
-def compute_class_weights(class_counts, ignore_index=6, smoothing=1.0):
-    """
-    Compute inverse frequency weights for loss function
-
-    Args:
-        class_counts: Array of pixel counts per class
-        ignore_index: Class to ignore (unknown)
-        smoothing: Smoothing factor to prevent extreme weights
-
-    Returns:
-        Tensor of class weights
-    """
-    import torch
-
-    # Exclude ignored class
-    counts = class_counts.copy()
-    counts[ignore_index] = 0
-
-    # Inverse frequency
-    weights = 1.0 / (counts + smoothing)
-
-    # Normalize (sum to num_classes)
-    weights = weights / weights.sum() * (len(weights) - 1)
-
-    # Set ignored class weight to 0
-    weights[ignore_index] = 0
-
-    return torch.FloatTensor(weights)
-
-# Calculate weights
-class_weights = compute_class_weights(class_counts)
-print("\n=== Class Weights ===")
-for i, name in enumerate(CLASS_NAMES):
-    print(f"{name:12s}: {class_weights[i]:.4f}")
-```
-
-### Step 5: Test RGB-to-ID Conversion
-
-**File:** `src/data/mask_conversion.py`
-
-```python
-import numpy as np
-from typing import Dict, Tuple
-import matplotlib.pyplot as plt
-
-def rgb_to_class_id(mask_rgb: np.ndarray,
-                    color_map: Dict[Tuple[int, int, int], int]) -> np.ndarray:
-    """
-    Convert RGB mask to class ID mask
-
-    Args:
-        mask_rgb: RGB mask array (H, W, 3)
-        color_map: Dictionary mapping RGB tuples to class IDs
-
-    Returns:
-        Class ID mask array (H, W)
-    """
-    h, w = mask_rgb.shape[:2]
-    mask_id = np.zeros((h, w), dtype=np.uint8)
-
-    for color, class_id in color_map.items():
-        match = np.all(mask_rgb == color, axis=-1)
-        mask_id[match] = class_id
-
-    return mask_id
-
-def class_id_to_rgb(mask_id: np.ndarray,
-                    color_map: Dict[Tuple[int, int, int], int]) -> np.ndarray:
-    """
-    Convert class ID mask back to RGB for visualization
-
-    Args:
-        mask_id: Class ID mask (H, W)
-        color_map: Dictionary mapping RGB tuples to class IDs
-
-    Returns:
-        RGB mask (H, W, 3)
-    """
-    h, w = mask_id.shape
-    mask_rgb = np.zeros((h, w, 3), dtype=np.uint8)
-
-    # Invert color_map
-    id_to_color = {v: k for k, v in color_map.items()}
-
-    for class_id, color in id_to_color.items():
-        mask_rgb[mask_id == class_id] = color
-
-    return mask_rgb
-
-# Test conversion
-if __name__ == "__main__":
-    from PIL import Image
-
-    COLOR_MAP = {
-        (0, 255, 255): 0, (255, 255, 0): 1, (255, 0, 255): 2,
-        (0, 255, 0): 3, (0, 0, 255): 4, (255, 255, 255): 5, (0, 0, 0): 6
-    }
-
-    # Load sample
-    mask_rgb = np.array(Image.open('data/raw/train/1_mask.png'))
-
-    # Convert
-    mask_id = rgb_to_class_id(mask_rgb, COLOR_MAP)
-    mask_rgb_reconstructed = class_id_to_rgb(mask_id, COLOR_MAP)
-
-    # Verify perfect reconstruction
-    assert np.array_equal(mask_rgb, mask_rgb_reconstructed), "Conversion failed!"
-    print("✓ RGB-to-ID conversion is correct")
-
-    # Visualize
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-    axes[0].imshow(mask_rgb)
-    axes[0].set_title('Original RGB Mask')
-    axes[1].imshow(mask_id, cmap='tab10', vmin=0, vmax=6)
-    axes[1].set_title('Class ID Mask')
-    axes[2].imshow(mask_rgb_reconstructed)
-    axes[2].set_title('Reconstructed RGB')
-    for ax in axes:
-        ax.axis('off')
-    plt.tight_layout()
-    plt.savefig('outputs/figures/mask_conversion_test.png', dpi=150)
-    plt.show()
-```
-
----
-
 ## Phase 3: Preprocessing Pipeline (Week 2, Days 1-3)
 
 ### Step 6: Create Train/Val Split
@@ -2206,15 +1962,15 @@ print("Check outputs/figures/ for visualizations")
 
 ### Week 1: Setup & Data Exploration
 
-- [ ] Setup project structure and environment
-- [ ] Download DeepGlobe dataset
-- [ ] Complete EDA notebook:
-  - [ ] Analyze images and masks
-  - [ ] Define color mappings
-  - [ ] Calculate class distribution
-  - [ ] Compute class weights
-- [ ] Test RGB-to-ID conversion
-- [ ] Document findings
+- [x] Setup project structure and environment
+- [x] Download DeepGlobe dataset
+- [x] Complete EDA notebook:
+  - [x] Analyze images and masks
+  - [x] Define color mappings
+  - [x] Calculate class distribution
+  - [x] Compute class weights
+- [x] Test RGB-to-ID conversion
+- [x] Document findings
 
 ### Week 2: Data Pipeline & Model Setup
 
@@ -2256,39 +2012,6 @@ print("Check outputs/figures/ for visualizations")
 
 ---
 
-## Quick Start Commands
-
-```bash
-# 1. Setup
-python3.10 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# 2. Download data
-kaggle datasets download -d balraj98/deepglobe-land-cover-classification-dataset
-unzip deepglobe-land-cover-classification-dataset.zip -d data/raw/
-
-# 3. EDA
-jupyter notebook notebooks/01_data_exploration.ipynb
-
-# 4. Create splits
-python src/data/create_splits.py
-
-# 5. Test pipeline
-jupyter notebook notebooks/02_test_dataloader.ipynb
-
-# 6. Train
-python train.py
-
-# 7. Inference
-python inference.py
-
-# 8. Evaluate
-jupyter notebook notebooks/03_evaluate_results.ipynb
-```
-
----
-
 ## Key Files Summary
 
 | File                               | Purpose                     |
@@ -2307,7 +2030,7 @@ jupyter notebook notebooks/03_evaluate_results.ipynb
 
 ---
 
-## Tips & Best Practices
+## Best Practices
 
 1. **Start Small**: Test with 10-20 images before full training
 2. **Monitor Overfitting**: Watch train vs val metrics closely
@@ -2320,17 +2043,6 @@ jupyter notebook notebooks/03_evaluate_results.ipynb
 
 ---
 
-## Expected Timeline
-
-- **Week 1**: Setup, EDA, data understanding
-- **Week 2**: Pipeline implementation, initial training
-- **Week 3**: Full training, evaluation, baseline results
-- **Week 4**: Experiments, optimization, final report
-
-**Total**: 3-4 weeks for complete project
-
----
-
 ## Resources
 
 - [DeepGlobe Paper](https://openaccess.thecvf.com/content_cvpr_2018_workshops/papers/w4/Demir_DeepGlobe_2018_A_CVPR_2018_paper.pdf)
@@ -2338,5 +2050,3 @@ jupyter notebook notebooks/03_evaluate_results.ipynb
 - [Albumentations Docs](https://albumentations.ai/docs/)
 - [TorchMetrics](https://torchmetrics.readthedocs.io/)
 - [Weights & Biases](https://wandb.ai/)
-
-Good luck with your project! 🚀
