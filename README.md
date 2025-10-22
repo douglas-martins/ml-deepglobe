@@ -102,10 +102,10 @@ cd ml-deepglobe
 
 # 2. Create virtual environment
 python3.10 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source .venv/bin/activate  # On Windows: .\venv\Scripts\activate
 
 # 3. Install dependencies
-pip install -r requirements.txt
+python -m pip install -r requirements.txt # On macOS: requirements-mac.txt
 
 # 4. Install Jupyter kernel
 python -m ipykernel install --user --name=ml-deepglobe
