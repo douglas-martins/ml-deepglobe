@@ -58,32 +58,6 @@ This project implements a **semantic segmentation pipeline** for land cover clas
 - 🚧 **Training & Evaluation** with mIoU metrics
 - 🚧 **Inference Pipeline** for new satellite images
 
-## 📁 Project Structure
-
-```
-ml-deepglobe/
-├── 📓 notebooks/
-│   ├── 01_data_exploration.ipynb    # ✅ EDA & Analysis
-│   ├── 02_test_dataloader.ipynb     # 🚧 Pipeline Testing
-│   └── 03_evaluate_results.ipynb    # 🚧 Model Evaluation
-├── 🐍 src/
-│   ├── data/
-│   │   ├── dataset.py               # PyTorch Dataset
-│   │   ├── transforms.py            # Augmentations
-│   │   └── mask_conversion.py       # RGB↔ID conversion
-│   ├── models/
-│   │   ├── unet.py                  # U-Net architecture
-│   │   └── deeplabv3.py             # DeepLabv3+
-│   └── utils/
-│       ├── metrics.py               # mIoU, per-class IoU
-│       └── visualization.py         # Plotting utilities
-├── 📊 outputs/
-│   ├── figures/                     # Visualizations
-│   └── models/                      # Saved checkpoints
-├── 📄 requirements.txt              # Python dependencies
-└── 📄 README.md                     # This file
-```
-
 ## 🚀 Installation
 
 ### Prerequisites
@@ -100,16 +74,27 @@ ml-deepglobe/
 git clone https://github.com/YOUR_USERNAME/ml-deepglobe.git
 cd ml-deepglobe
 
-# 2. Create virtual environment
-python3.10 -m venv venv
-source .venv/bin/activate  # On Windows: .\venv\Scripts\activate
+# 2. Install uv (see https://docs.astral.sh/uv/)
+# Linux / macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex"
+uv python install 3.10
 
-# 3. Install dependencies
-python -m pip install -r requirements.txt # On macOS: requirements-mac.txt
+# 3. Create virtual environment
+uv venv .venv
+source .venv/bin/activate  # Windows: .\.venv\Scripts\activate
 
-# 4. Install Jupyter kernel
+# 4. Install dependencies
+uv sync --extra cuda       # Linux / Windows with NVIDIA GPUs
+# or
+uv sync                    # macOS (CPU build)
+
+# 5. Install Jupyter kernel
 python -m ipykernel install --user --name=ml-deepglobe
 ```
+
+The `pyproject.toml` captures the shared dependencies while the optional `mac` and `cuda` groups pull the appropriate PyTorch build; the CUDA group is wired to the NVIDIA wheel index so Linux and Windows setups get the correct GPU binaries automatically.
 
 <details>
 <summary><b>🔧 Troubleshooting Installation Issues</b></summary>
@@ -120,8 +105,8 @@ python -m ipykernel install --user --name=ml-deepglobe
 # Verify CUDA version
 nvidia-smi
 
-# Install PyTorch with specific CUDA version
-pip install torch==2.5.1+cu118 torchvision==0.20.1+cu118 --index-url https://download.pytorch.org/whl/cu118
+# Re-install the CUDA PyTorch wheels (inside the venv)
+uv pip install torch==2.5.1+cu118 torchvision==0.20.1+cu118 torchaudio==2.5.1+cu118 --index-url https://download.pytorch.org/whl/cu118
 ```
 
 **Kaggle API Setup:**

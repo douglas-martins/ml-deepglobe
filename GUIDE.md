@@ -38,28 +38,33 @@ ml-deepglobe-project/
 │   ├── checkpoints/     # Model weights
 │   ├── predictions/     # Generated masks
 │   └── figures/         # Visualizations
-├── requirements.txt
+├── pyproject.toml
 └── README.md
 ```
 
 ### Step 2: Setup Python Environment
 
 ```bash
-# Create virtual environment
-python3.10 -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or venv\Scripts\activate  # Windows
+# 1. Install uv (see https://docs.astral.sh/uv/ for other options)
+# Linux / macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -UseBasicParsing | iex"
 
-# Install core dependencies
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install segmentation-models-pytorch albumentations
-pip install rasterio opencv-python matplotlib seaborn
-pip install pandas numpy scikit-learn tqdm
-pip install torchmetrics wandb tensorboard
+# 2. Make sure Python 3.10 is available to uv
+uv python install 3.10
 
-# Save requirements
-pip freeze > requirements.txt
+# 3. Create and activate a virtual environment
+uv venv .venv
+source .venv/bin/activate            # Windows: .\.venv\Scripts\activate
+
+# 4. Install dependencies
+uv sync --extra cuda                 # Linux/Windows with NVIDIA GPUs
+# or, on macOS (CPU build):
+uv sync
 ```
+
+The `pyproject.toml` defines the optional dependency set while the `cuda`, that install the appropriate PyTorch stack for each platform. The CUDA-specific group also pulls the `nvidia-*` runtime libraries so no manual wheel downloads are required.
 
 ### Step 3: Download DeepGlobe Dataset
 
@@ -1974,23 +1979,23 @@ print("Check outputs/figures/ for visualizations")
 
 ### Week 2: Data Pipeline & Model Setup
 
-- [ ] Create stratified train/val split
-- [ ] Implement tiling/reconstruction functions
-- [ ] Build Dataset class with augmentations
-- [ ] Test DataLoader pipeline
-- [ ] Create model wrapper (U-Net, DeepLabV3+)
-- [ ] Setup loss functions (Combined, Focal)
-- [ ] Setup metrics tracker
+- [x] Create stratified train/val split
+- [x] Implement tiling/reconstruction functions
+- [x] Build Dataset class with augmentations
+- [x] Test DataLoader pipeline
+- [x] Create model wrapper (U-Net, DeepLabV3+)
+- [x] Setup loss functions (Combined, Focal)
+- [x] Setup metrics tracker
 - [ ] Test forward/backward passes
 
 ### Week 3: Training & Evaluation
 
-- [ ] Implement training loop
-- [ ] Create training script
+- [x] Implement training loop
+- [x] Create training script
 - [ ] Train baseline model (U-Net ResNet34)
 - [ ] Monitor with W&B/TensorBoard
-- [ ] Implement inference script
-- [ ] Create visualization utilities
+- [x] Implement inference script
+- [x] Create visualization utilities
 - [ ] Evaluate on validation set
 - [ ] Generate error analysis
 
@@ -2014,19 +2019,19 @@ print("Check outputs/figures/ for visualizations")
 
 ## Key Files Summary
 
-| File                               | Purpose                     |
-| ---------------------------------- | --------------------------- |
-| `src/data/mask_conversion.py`      | RGB ↔ ID conversion         |
-| `src/data/tiling.py`               | Image tiling/reconstruction |
-| `src/data/create_splits.py`        | Train/val split creation    |
-| `src/data/dataset.py`              | PyTorch Dataset class       |
-| `src/models/segmentation_model.py` | Model creation              |
-| `src/training/losses.py`           | Loss functions              |
-| `src/training/metrics.py`          | Evaluation metrics          |
-| `src/training/trainer.py`          | Training manager            |
-| `src/utils/visualization.py`       | Plotting utilities          |
-| `train.py`                         | Main training script        |
-| `inference.py`                     | Prediction script           |
+| File                                   | Purpose                     |
+| -------------------------------------- | --------------------------- |
+| `src/data/mask_conversion.py`          | RGB ↔ ID conversion         |
+| `src/data/tiling.py`                   | Image tiling/reconstruction |
+| `src/data/create_splits.py`            | Train/val split creation    |
+| `src/data/dataset.py`                  | PyTorch Dataset class       |
+| `src/models/segmentation_model.py`     | Model creation              |
+| `src/training/losses.py`               | Loss functions              |
+| `src/training/metrics.py`              | Evaluation metrics          |
+| `src/training/trainer.py`              | Training manager            |
+| `src/utils/visualization.py`           | Plotting utilities          |
+| `src/train.py`                         | Main training script        |
+| `src/inference.py`                     | Prediction script           |
 
 ---
 
