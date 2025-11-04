@@ -1,4 +1,5 @@
 import sys
+import os
 import torch
 import json
 import wandb
@@ -24,7 +25,7 @@ CONFIG = {
     'data_dir': str(PROJECT_ROOT / 'data' / 'raw' / 'train'),
     'train_split': str(PROJECT_ROOT / 'data' / 'splits' / 'train_files.json'),
     'val_split': str(PROJECT_ROOT / 'data' / 'splits' / 'val_files.json'),
-    'tile_size': 384, # 512
+    'tile_size': 512, # 512, 384
     'overlap': 64,
 
     # Model
@@ -34,11 +35,12 @@ CONFIG = {
     'encoder_weights': 'imagenet',
 
     # Training
-    'batch_size': 2, # 8
-    'num_epochs': 2, # 150
+    'batch_size': 4, # 8
+    'num_epochs': 20, # 150
     'learning_rate': 3e-4,
     'weight_decay': 1e-4,
-    'early_stopping_patience': 15,
+    'early_stopping_patience': 10, # 15
+    'checkpoint_epoch': '',
 
     # Loss
     'ce_weight': 1.0,
@@ -151,6 +153,8 @@ def main():
         encoder_weights=CONFIG['encoder_weights']
     )
 
+    is_deeplab = CONFIG['architecture'].lower() == 'deeplabv3plus'
+
     # Count parameters
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {num_params:,}\n")
@@ -199,10 +203,15 @@ def main():
         use_wandb=CONFIG['use_wandb']
     )
 
+
+    # Load checkpoint
+    checkpoint_path = Path(CONFIG['checkpoint_dir']) / CONFIG['checkpoint_epoch']
+    if checkpoint_path.exists():
+        trainer.load_checkpoint(CONFIG['checkpoint_epoch'])
+
     # Train
     trainer.train(
         num_epochs=CONFIG['num_epochs'],
-        current_epoch=0,
         early_stopping_patience=CONFIG['early_stopping_patience']
     )
 

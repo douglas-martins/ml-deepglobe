@@ -90,7 +90,11 @@ class Trainer:
 
             # Update metrics
             total_loss += loss.item()
-            self.train_metrics.update(outputs.detach(), masks)
+            # preds_cpu = outputs.detach().to('cpu')
+            preds_cpu = torch.argmax(outputs.detach(), dim=1).to('cpu')
+            masks_cpu = masks.to('cpu')
+            self.train_metrics.update(preds_cpu, masks_cpu)
+            del preds_cpu, masks_cpu
 
             # Update progress bar
             pbar.set_postfix({'loss': loss.item()})
@@ -121,7 +125,11 @@ class Trainer:
 
             # Update metrics
             total_loss += loss.item()
-            self.val_metrics.update(outputs, masks)
+            # preds_cpu = outputs.detach().to('cpu')
+            preds_cpu = torch.argmax(outputs.detach(), dim=1).to('cpu')
+            masks_cpu = masks.to('cpu')
+            self.val_metrics.update(preds_cpu, masks_cpu)
+            del preds_cpu, masks_cpu
 
             # Update progress bar
             pbar.set_postfix({'loss': loss.item()})
@@ -238,7 +246,11 @@ class Trainer:
 
     def load_checkpoint(self, filename: str):
         """Load model checkpoint"""
-        checkpoint = torch.load(self.checkpoint_dir / filename, map_location=self.device)
+        checkpoint_path = Path(self.checkpoint_dir) / filename
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
+
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
 
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

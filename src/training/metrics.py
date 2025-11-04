@@ -28,14 +28,14 @@ class SegmentationMetrics:
             num_classes=num_classes,
             ignore_index=ignore_index,
             average='none'  # Per-class IoU
-        ).to(device)
+        ).to('cpu')
 
         self.accuracy_metric = Accuracy(
             task='multiclass',
             num_classes=num_classes,
             ignore_index=ignore_index,
             average='micro'
-        ).to(device)
+        ).to('cpu')
 
     def update(self, preds: torch.Tensor, targets: torch.Tensor):
         """

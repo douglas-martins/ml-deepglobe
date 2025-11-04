@@ -1,4 +1,6 @@
 import sys, os
+from collections import OrderedDict
+# from functools import lru_cache
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.getcwd(), '..'))
 if PROJECT_ROOT not in sys.path:
@@ -14,8 +16,7 @@ from pathlib import Path
 import json
 from typing import Optional, Dict, List, Tuple
 
-from src.data.mask_conversion import rgb_to_class_id
-# from src.data.tiling import tile_image
+from src.data.mask_conversion import rgb_to_class_id, rgb_tile_to_id
 
 class DeepGlobeDataset(Dataset):
     """
@@ -58,6 +59,14 @@ class DeepGlobeDataset(Dataset):
         # Pre-compute all tile coordinates
         self.tiles_info = self._prepare_tiles()
 
+        # Cache optimized tiles
+        # self._get_image = lru_cache(maxsize=32)(self._load_image)
+        # self._get_mask = lru_cache(maxsize=32)(self._load_mask) if is_train else None
+        self.cache_size = 32  # adjust if you’d like
+        self._image_cache = OrderedDict()
+        self._mask_cache = OrderedDict() if is_train else None
+
+
     def _prepare_tiles(self) -> List[Dict]:
         """Cache tile coordinates for all images"""
         tiles_info = []
@@ -89,6 +98,38 @@ class DeepGlobeDataset(Dataset):
     def __len__(self) -> int:
         return len(self.tiles_info)
 
+    def _load_image(self, file_id: str) -> np.ndarray:
+        img_path = self.data_dir / f"{file_id}_sat.jpg"
+        return np.array(Image.open(img_path))
+
+    def _load_mask(self, file_id: str) -> np.ndarray:
+        mask_path = self.data_dir / f"{file_id}_mask.png"
+        return np.array(Image.open(mask_path).convert("RGB"))
+
+    def _get_image(self, file_id: str) -> np.ndarray:
+        cache = self._image_cache
+        if file_id in cache:
+            cache.move_to_end(file_id)
+            return cache[file_id]
+        image = self._load_image(file_id)
+        cache[file_id] = image
+        if len(cache) > self.cache_size:
+            cache.popitem(last=False)
+        return image
+
+    def _get_mask(self, file_id: str) -> np.ndarray:
+        cache = self._mask_cache
+        if cache is None:
+            raise RuntimeError("Mask cache requested in inference mode")
+        if file_id in cache:
+            cache.move_to_end(file_id)
+            return cache[file_id]
+        mask = self._load_mask(file_id)
+        cache[file_id] = mask
+        if len(cache) > self.cache_size:
+            cache.popitem(last=False)
+        return mask
+
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Returns:
@@ -101,18 +142,21 @@ class DeepGlobeDataset(Dataset):
         x = tile_info['x']
 
         # Load full image
-        img_path = self.data_dir / f"{file_id}_sat.jpg"
-        image = np.array(Image.open(img_path))
+        # img_path = self.data_dir / f"{file_id}_sat.jpg"
+        # image = np.array(Image.open(img_path))
+        image = self._get_image(file_id)
 
         # Extract tile
         tile_img = image[y:y+self.tile_size, x:x+self.tile_size]
 
         if self.is_train:
             # Load and convert mask
-            mask_path = self.data_dir / f"{file_id}_mask.png"
-            mask_rgb = np.array(Image.open(mask_path))
-            mask_id = rgb_to_class_id(mask_rgb, self.COLOR_MAP)
-            tile_mask = mask_id[y:y+self.tile_size, x:x+self.tile_size]
+            # mask_path = self.data_dir / f"{file_id}_mask.png"
+            # mask_rgb = np.array(Image.open(mask_path))
+            # mask_id = rgb_to_class_id(mask_rgb, self.COLOR_MAP)
+            mask_rgb = self._get_mask(file_id)
+            mask_tile_rgb = mask_rgb[y:y+self.tile_size, x:x+self.tile_size]
+            tile_mask = rgb_tile_to_id(mask_tile_rgb, self.COLOR_MAP)
         else:
             # No mask for inference
             tile_mask = np.zeros((self.tile_size, self.tile_size), dtype=np.uint8)
